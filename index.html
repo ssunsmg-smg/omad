@@ -290,12 +290,12 @@ textarea { height: 62px; resize: none; line-height: 1.5; }
 
     <!-- API 키 저장 -->
     <div class="save-section">
-      <div class="save-section-title">💾 API 키 저장 (이 기기에만 보관)</div>
+      <div class="save-section-title">🔑 Gemini API 키 (필수)</div>
       <div class="save-row">
-        <input type="password" id="apiKey" placeholder="Gemini API 키 (AIzaSy...)">
+        <input type="password" id="apiKey" placeholder="API 키를 입력하고 저장 버튼 클릭">
         <button class="save-row-btn" onclick="saveApiKey()">저장</button>
       </div>
-      <div class="save-hint">저장하면 다음번에 자동으로 채워집니다. 이 기기 브라우저에만 저장되며 외부로 전송되지 않아요.</div>
+      <div class="save-hint">⚠️ 반드시 본인 키를 입력 후 저장하세요. 이 기기에만 보관되며 외부로 전송되지 않아요.</div>
       <div class="save-status" id="saveStatus">✓ 저장되었습니다</div>
       <div style="margin-top:6px;">
         <a href="https://aistudio.google.com" target="_blank" style="font-size:11px;color:#4477bb;">aistudio.google.com에서 무료 발급 →</a>
@@ -347,7 +347,7 @@ textarea { height: 62px; resize: none; line-height: 1.5; }
 
 <script>
 var TABS = ['checklist','blog','insta','facebook','youtube','tistory','report'];
-var EMBEDDED_KEY = 'AIzaSyD3jAB6HQUL4L4c2gm5qG2adTq1dlQq4Pk';
+
 
 window.onload = function() {
   // localStorage에서 API 키 불러오기
@@ -355,12 +355,14 @@ window.onload = function() {
   if (saved) {
     document.getElementById('apiKey').value = saved;
   } else {
-    document.getElementById('apiKey').value = EMBEDDED_KEY;
+    
   }
 };
 
 function getApiKey() {
-  return document.getElementById('apiKey').value.trim() || EMBEDDED_KEY;
+  var key = document.getElementById('apiKey').value.trim();
+  if (!key) { alert('API 키를 입력하고 저장 버튼을 눌러주세요.\n\naistudio.google.com에서 무료로 발급받을 수 있어요.'); return null; }
+  return key;
 }
 
 function saveApiKey() {
@@ -414,6 +416,9 @@ async function autoAnalyze() {
   var st   = document.getElementById('sSt').value;
   if (!addr) { alert('주소를 먼저 입력해주세요'); return; }
 
+  var apiKey = getApiKey();
+  if (!apiKey) return;
+
   var btn = document.getElementById('autoBtn');
   var bc  = document.getElementById('autoBtnContent');
   btn.disabled = true;
@@ -423,9 +428,7 @@ async function autoAnalyze() {
     '\n\n위 정보로 상권 특징과 주요 고객층을 분석하세요.\n반드시 JSON만 반환:\n{"extra":"상권 특징 2~3문장","target":"주요 고객층 2~3문장"}';
 
   try {
-    var res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+getApiKey(), {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0.7,responseMimeType:'application/json'} })
+    var res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+apiKey, {
     });
     var d = await res.json();
     if (!res.ok) throw new Error((d.error&&d.error.message)||'오류 '+res.status);
@@ -447,6 +450,8 @@ async function run() {
   var name = document.getElementById('sName').value.trim();
   var addr = document.getElementById('sAddr').value.trim();
   if (!name||!addr) { alert('상호명과 주소는 필수입니다'); return; }
+  var apiKey = getApiKey();
+  if (!apiKey) return;
 
   var data = {
     name:name, address:addr,
@@ -479,7 +484,7 @@ async function run() {
     '"report":{"주요 고객층 분석":"내용","상권 및 경쟁 환경":"내용","추천 주류 품목":"내용","영업 핵심 포인트":"내용","방문 적기":"내용"}}';
 
   try {
-    var res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+getApiKey(), {
+    var res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+apiKey, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.8,responseMimeType:'application/json'}})
     });
