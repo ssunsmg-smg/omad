@@ -10,74 +10,50 @@ export default async function handler(req, res) {
   if (!anthropicKey) return res.status(500).json({ error: 'API key not configured' });
 
   try {
-    const { prompt, address, isAnalysis } = req.body;
+    const { prompt, isAnalysis, address } = req.body;
+    if (!prompt) return res.status(400).json({ error: 'prompt 없음' });
 
-    // 상권 자동분석 요청일 때만 카카오 API 사용
+    // 카카오 상권 데이터 수집 (상권분석 요청일 때만)
     let locationContext = '';
     if (isAnalysis && kakaoKey && address) {
       try {
-        // 1. 주소 → 좌표 변환
         const geoRes = await fetch(
           `https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(address)}`,
           { headers: { Authorization: `KakaoAK ${kakaoKey}` } }
         );
         const geoData = await geoRes.json();
         const doc = geoData.documents?.[0];
-
         if (doc) {
-          const lat = doc.y;
-          const lng = doc.x;
+          const lat = doc.y, lng = doc.x;
           const roadAddr = doc.road_address?.address_name || address;
-
-          // 2. 주변 500m 카테고리별 검색
           const categories = [
             { code: 'FD6', name: '음식점' },
             { code: 'CE7', name: '카페' },
             { code: 'SW8', name: '지하철역' },
-            { code: 'OL7', name: '주유소' },
             { code: 'MT1', name: '대형마트' },
             { code: 'CS2', name: '편의점' }
           ];
-
-          const nearbyResults = await Promise.all(
-            categories.map(async (cat) => {
-              const r = await fetch(
-                `https://dapi.kakao.com/v2/local/search/category.json?category_group_code=${cat.code}&x=${lng}&y=${lat}&radius=500&size=5`,
-                { headers: { Authorization: `KakaoAK ${kakaoKey}` } }
-              );
-              const d = await r.json();
-              const places = d.documents?.map(p => p.place_name).join(', ') || '없음';
-              return `${cat.name}: ${places}`;
-            })
-          );
-
-          // 3. 키워드로 주변 랜드마크 검색
-          const landmarkRes = await fetch(
-            `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(address)}&x=${lng}&y=${lat}&radius=1000&size=10`,
+          const nearby = await Promise.all(categories.map(async (cat) => {
+            const r = await fetch(
+              `https://dapi.kakao.com/v2/local/search/category.json?category_group_code=${cat.code}&x=${lng}&y=${lat}&radius=500&size=3`,
+              { headers: { Authorization: `KakaoAK ${kakaoKey}` } }
+            );
+            const d = await r.json();
+            const places = d.documents?.map(p => p.place_name).join(', ') || '없음';
+            return `${cat.name}: ${places}`;
+          }));
+          const kwRes = await fetch(
+            `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(address)}&x=${lng}&y=${lat}&radius=1000&size=5`,
             { headers: { Authorization: `KakaoAK ${kakaoKey}` } }
           );
-          const landmarkData = await landmarkRes.json();
-          const landmarks = landmarkData.documents?.slice(0,5).map(p => `${p.place_name}(${p.category_name})`).join(', ') || '없음';
-
-          locationContext = `
-[실제 카카오 지도 데이터]
-도로명 주소: ${roadAddr}
-좌표: 위도 ${lat}, 경도 ${lng}
-반경 500m 내 주요 시설:
-${nearbyResults.join('\n')}
-반경 1km 내 주요 랜드마크: ${landmarks}
-`;
+          const kwData = await kwRes.json();
+          const landmarks = kwData.documents?.slice(0,5).map(p => `${p.place_name}(${p.category_name})`).join(', ') || '없음';
+          locationContext = `[카카오 지도 실제 데이터]\n도로명: ${roadAddr}\n반경 500m:\n${nearby.join('\n')}\n랜드마크: ${landmarks}\n\n`;
         }
-      } catch (kakaoErr) {
-        console.error('Kakao API error:', kakaoErr);
-        // 카카오 실패해도 계속 진행
-      }
+      } catch(e) { /* 카카오 실패시 무시 */ }
     }
 
-    // Claude API 호출
-    const finalPrompt = locationContext
-      ? `${locationContext}\n\n위 실제 지도 데이터를 바탕으로 분석하세요:\n${prompt}`
-      : prompt;
+    const finalPrompt = locationContext + prompt;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -95,13 +71,14 @@ ${nearbyResults.join('\n')}
     });
 
     const data = await response.json();
-    if (!response.ok) return res.status(response.status).json({ error: data.error?.message || '오류' });
+    if (!response.ok) return res.status(response.status).json({ error: data.error?.message || 'Claude API 오류' });
+    if (!data.content?.[0]?.text) return res.status(500).json({ error: 'AI 응답이 비어있습니다' });
 
-    const text = data.content.map(c => c.text || '').join('');
+    const text = data.content[0].text;
     return res.status(200).json({
       candidates: [{ content: { parts: [{ text }] } }]
     });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: e.message || '서버 오류' });
   }
 }
