@@ -145,6 +145,9 @@ textarea { height: 62px; resize: none; line-height: 1.5; }
     <button class="menu-btn" onclick="toggleSidebar()"><span></span><span></span><span></span></button>
   </div>
 </div>
+<button class="back-btn" id="backBtn" onclick="goBack()">← 입력으로
+  </div>
+</div>
 <div class="layout">
   <div class="sidebar" id="sidebar">
     <div class="sec-title">거래처 정보</div>
@@ -311,9 +314,25 @@ async function run() {
   });
   document.getElementById('emptyMsg').style.display='none';
 
+  // 모바일: 결과 화면으로 전환
+  closeSidebar();
+  if (window.innerWidth <= 720) {
+    document.querySelector('.layout').classList.add('result-mode');
+    document.getElementById('backBtn').style.display = 'flex';
+  }
+
   // 첫 탭(플레이스)만 즉시 생성
   showTab('checklist');
-  closeSidebar();
+}
+
+function goBack() {
+  document.querySelector('.layout').classList.remove('result-mode');
+  document.getElementById('backBtn').style.display = 'none';
+  // 모바일에서 사이드바 열기
+  if (window.innerWidth <= 720) {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('overlay').classList.add('on');
+  }
 }
 
 function renderTab(tabId, r, name) {
