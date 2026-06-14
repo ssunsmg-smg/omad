@@ -118,8 +118,9 @@ textarea{height:62px;resize:none;line-height:1.5}
     box-shadow:0 8px 32px rgba(0,0,0,0.15)
   }
   .sidebar.open{display:flex}
-  /* 결과모드: 사이드바 완전 숨김 */
-  .result-mode .sidebar{display:none !important}
+  /* 결과모드: 사이드바 기본 숨김, open시 표시 */
+  .result-mode .sidebar{display:none}
+  .result-mode .sidebar.open{display:flex !important}
   /* 하단 탭바 */
   .tabs{
     position:fixed;bottom:0;left:0;right:0;z-index:120;
@@ -331,13 +332,25 @@ async function run(){
     document.getElementById('b-'+t).innerHTML='<div style="padding:30px;text-align:center;color:var(--text-3);font-size:13px;">탭을 클릭하면 AI가 생성합니다 ✦</div>';
   });
   document.getElementById('emptyMsg').style.display='none';
-  // 모바일: 결과 화면으로 전환
   closeSidebar();
+
   if(window.innerWidth<=720){
+    // 모바일: 결과 화면으로 전환 후 탭별 생성
     document.getElementById('layout').classList.add('result-mode');
     document.getElementById('backBtn').style.display='flex';
+    showTab('checklist');
+  } else {
+    // PC: 전체 탭 한번에 생성
+    showTab('checklist');
+    runBtn.disabled=true;
+    runBtn.textContent='⏳ 생성 중...';
+    try {
+      await Promise.all(TABS.map(function(t){ return generateTab(t); }));
+    } finally {
+      runBtn.disabled=false;
+      runBtn.textContent='✦ 콘텐츠 생성하기';
+    }
   }
-  showTab('checklist');
 }
 
 function esc(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -366,7 +379,8 @@ function renderTab(tabId,r,name){
     }).join('');
     el.innerHTML='<div class="action-bar"><span class="action-info"><b>'+esc(name)+'</b></span><button class="copy-all-btn" onclick="copyText('+JSON.stringify(r.checklist||'')+',this)">전체 복사</button></div><div class="card">'+items+'</div>';
   }else if(tabId==='blog'){
-    el.innerHTML='<div class="action-bar"><span class="action-info">네이버 블로그</span><button class="copy-all-btn" onclick="copyText('+JSON.stringify(r.blog||'')+',this)">전체 복사</button></div>'+makeCard('블로그 초안',r.blog||'');
+    var blogText=typeof r.blog==='string'?r.blog:JSON.stringify(r.blog||'');
+    el.innerHTML='<div class="action-bar"><span class="action-info">네이버 블로그</span><button class="copy-all-btn" onclick="copyText('+JSON.stringify(blogText)+',this)">전체 복사</button></div>'+makeCard('블로그 초안',blogText);
   }else if(tabId==='insta'){
     var itags=(r.insta_tags||[]).map(function(t){return '<span class="tag">'+esc(t.charAt(0)==='#'?t:'#'+t)+'</span>';}).join('');
     var ia=(r.insta_body||'')+'\n\n'+(r.insta_tags||[]).map(function(t){return t.charAt(0)==='#'?t:'#'+t;}).join(' ');
