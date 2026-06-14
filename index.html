@@ -203,10 +203,14 @@ async function callGemini(prompt, temperature, isAnalysis, address) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt: prompt, temperature: temperature || 0.8, isAnalysis: !!isAnalysis, address: address || '' })
   });
-  var d = await res.json();
+  var raw = await res.text();
+  var d;
+  try { d = JSON.parse(raw); } catch(e) { throw new Error('서버 응답 오류: ' + raw.substring(0, 100)); }
   if (!res.ok) throw new Error(d.error || '오류 ' + res.status);
+  if (!d.candidates || !d.candidates[0]) throw new Error(d.error || 'AI 응답 없음');
   var text = d.candidates[0].content.parts[0].text;
-  return JSON.parse(text.replace(/```json|```/g,'').trim());
+  var clean = text.replace(/```json|```/g,'').trim();
+  try { return JSON.parse(clean); } catch(e) { throw new Error('JSON 파싱 실패 — 응답이 너무 길거나 잘렸을 수 있어요'); }
 }
 
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('overlay').classList.toggle('on'); }
