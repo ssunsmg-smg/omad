@@ -194,6 +194,24 @@ textarea { height: 62px; resize: none; line-height: 1.5; }
 
 <script>
 var TABS = ['checklist','blog','insta','facebook','youtube','tistory','report'];
+var currentData = null; // 거래처 정보 저장
+var generated = {}; // 생성된 탭 캐시
+
+async function callGemini(prompt, isAnalysis, address) {
+  var res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: prompt, temperature: 0.8, isAnalysis: !!isAnalysis, address: address || '' })
+  });
+  var raw = await res.text();
+  var d;
+  try { d = JSON.parse(raw); } catch(e) { throw new Error('서버 오류: ' + raw.substring(0, 80)); }
+  if (!res.ok) throw new Error(d.error || '오류 ' + res.status);
+  if (!d.candidates?.[0]) throw new Error(d.error || 'AI 응답 없음');
+  var text = d.candidates[0].content.parts[0].text;
+  try { return JSON.parse(text.replace(/```json|```/g,'').trim()); }
+  catch(e) { throw new Error('응답 파싱 실패. 다시 시도해주세요.'); }
+}
 // Vercel 서버 URL — 배포 후 자동으로 같은 도메인 사용
 var API_URL = '/api/gemini';
 
@@ -203,14 +221,10 @@ async function callGemini(prompt, temperature, isAnalysis, address) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt: prompt, temperature: temperature || 0.8, isAnalysis: !!isAnalysis, address: address || '' })
   });
-  var raw = await res.text();
-  var d;
-  try { d = JSON.parse(raw); } catch(e) { throw new Error('서버 응답 오류: ' + raw.substring(0, 100)); }
+  var d = await res.json();
   if (!res.ok) throw new Error(d.error || '오류 ' + res.status);
-  if (!d.candidates || !d.candidates[0]) throw new Error(d.error || 'AI 응답 없음');
   var text = d.candidates[0].content.parts[0].text;
-  var clean = text.replace(/```json|```/g,'').trim();
-  try { return JSON.parse(clean); } catch(e) { throw new Error('JSON 파싱 실패 — 응답이 너무 길거나 잘렸을 수 있어요'); }
+  return JSON.parse(text.replace(/```json|```/g,'').trim());
 }
 
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('overlay').classList.toggle('on'); }
@@ -218,12 +232,42 @@ function closeSidebar() { document.getElementById('sidebar').classList.remove('o
 function showTab(id) {
   TABS.forEach(function(t){ document.getElementById('p-'+t).classList.toggle('active', t===id); });
   document.querySelectorAll('.tab').forEach(function(b,i){ b.classList.toggle('active', TABS[i]===id); });
+  // 탭 클릭시 해당 탭 콘텐츠 생성 (캐시 없을 때만)
+  if (currentData && !generated[id]) {
+    generateTab(id);
+  }
 }
 function esc(s) { if(!s)return''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function copyText(txt, btn) {
   navigator.clipboard.writeText(txt).then(function(){ var o=btn.textContent; btn.textContent='복사됨 ✓'; setTimeout(function(){btn.textContent=o;},1500); });
 }
 function onAddrInput() { document.getElementById('badgeEx').style.display='none'; document.getElementById('badgeTg').style.display='none'; }
+
+async function generateTab(tabId) {
+  if (!currentData) return;
+  var panel = document.getElementById('b-' + tabId);
+  panel.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)"><div class="spinner" style="margin:0 auto 12px"></div>AI가 생성 중...</div>';
+
+  var d = currentData;
+  var base = '상호명:'+d.name+'\n업종:'+d.category+'\n주소:'+d.address+'\n상태:'+d.status+'\n특징:'+d.extra+'\n고객층:'+d.target;
+  var prompts = {
+    checklist: base+'\n\n{"checklist":"네이버플레이스 최적화 체크리스트 10개. 줄바꿈구분. ✅또는⚠️시작. 형식:이모지 항목명 — 설명"}',
+    blog: base+'\n\n{"blog":"네이버 블로그 초안. 제목포함. 1500자. 방문후기형식."}',
+    insta: base+'\n\n{"insta_body":"인스타 본문. 이모지. 200자이내. 해시태그제외.","insta_tags":["태그1","태그2","태그3","태그4","태그5","태그6","태그7","태그8","태그9","태그10"]}',
+    facebook: base+'\n\n{"facebook":"페이스북. 이모지. 300자이내. 공유유도."}',
+    youtube: base+'\n\n{"youtube_title":"유튜브 제목후보 3개. 줄바꿈구분.","youtube_desc":"유튜브 설명란. 500자. SEO최적화.","youtube_tags":["태그1","태그2","태그3","태그4","태그5","태그6","태그7","태그8","태그9","태그10"]}',
+    tistory: base+'\n\n{"tistory_title":"티스토리 제목. SEO최적화.","tistory_body":"티스토리 포스팅. 2000자. 소제목포함. 방문기형식.","tistory_tags":["태그1","태그2","태그3","태그4","태그5"]}',
+    report: base+'\n\n{"report":{"주요 고객층 분석":"내용","상권 및 경쟁 환경":"내용","추천 주류 품목":"내용","영업 핵심 포인트":"내용","방문 적기":"내용"}}'
+  };
+
+  try {
+    var r = await callGemini(prompts[tabId]);
+    generated[tabId] = r;
+    renderTab(tabId, r, d.name);
+  } catch(e) {
+    panel.innerHTML = '<div style="padding:20px;color:var(--accent-2);font-size:13px;">⚠️ '+e.message+'<br><br><button onclick="generateTab(\''+tabId+'\')" style="padding:8px 16px;background:var(--accent-2);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">다시 시도</button></div>';
+  }
+}
 
 async function autoAnalyze() {
   var addr=document.getElementById('sAddr').value.trim();
@@ -248,20 +292,54 @@ async function run() {
   var name=document.getElementById('sName').value.trim();
   var addr=document.getElementById('sAddr').value.trim();
   if(!name||!addr){alert('상호명과 주소는 필수입니다');return;}
-  var data={name:name,address:addr,category:document.getElementById('sCat').value.trim()||'음식점',status:document.getElementById('sSt').value,extra:document.getElementById('sEx').value.trim()||'없음',target:document.getElementById('sTg').value.trim()||'일반 고객'};
-  document.getElementById('runBtn').disabled=true; document.getElementById('mobileFab').disabled=true;
-  document.getElementById('loading').classList.add('on'); document.getElementById('emptyMsg').style.display='none';
-  TABS.forEach(function(t){document.getElementById('b-'+t).innerHTML='';});
-  var prompt='다음 외식업체 마케팅 콘텐츠를 생성하세요.\n\n상호명:'+data.name+'\n업종:'+data.category+'\n주소:'+data.address+'\n상태:'+data.status+'\n특징:'+data.extra+'\n고객층:'+data.target+'\n\n{"checklist":"네이버플레이스 최적화 체크리스트 10개. 줄바꿈 구분. ✅또는⚠️시작. 형식:이모지 항목명 — 설명","blog":"네이버 블로그 초안. 제목포함. 1500자. 방문후기형식.","insta_body":"인스타 본문. 이모지. 200자이내. 해시태그제외.","insta_tags":["태그1","태그2","태그3","태그4","태그5","태그6","태그7","태그8","태그9","태그10","태그11","태그12","태그13","태그14","태그15"],"facebook":"페이스북. 이모지. 300자이내. 공유유도.","youtube_title":"유튜브 제목후보 3개. 줄바꿈구분.","youtube_desc":"유튜브 설명란. 500자. 타임스탬프포함. SEO최적화.","youtube_tags":["태그1","태그2","태그3","태그4","태그5","태그6","태그7","태그8","태그9","태그10"],"tistory_title":"티스토리 제목. SEO최적화.","tistory_body":"티스토리 포스팅. 2000자. 소제목포함. 방문기형식. 텍스트만.","tistory_tags":["태그1","태그2","태그3","태그4","태그5"],"report":{"주요 고객층 분석":"내용","상권 및 경쟁 환경":"내용","추천 주류 품목":"내용","영업 핵심 포인트":"내용","방문 적기":"내용"}}';
-  try {
-    var parsed=await callGemini(prompt,0.8);
-    document.getElementById('loading').classList.remove('on');
-    document.getElementById('runBtn').disabled=false; document.getElementById('mobileFab').disabled=false;
-    renderAll(parsed,name); showTab('checklist'); closeSidebar();
-  } catch(e){
-    document.getElementById('loading').classList.remove('on');
-    document.getElementById('runBtn').disabled=false; document.getElementById('mobileFab').disabled=false;
-    alert('오류: '+e.message);
+
+  currentData = {
+    name:name, address:addr,
+    category: document.getElementById('sCat').value.trim()||'음식점',
+    status: document.getElementById('sSt').value,
+    extra: document.getElementById('sEx').value.trim()||'없음',
+    target: document.getElementById('sTg').value.trim()||'일반 고객'
+  };
+  generated = {}; // 캐시 초기화
+
+  // 모든 탭 초기화
+  TABS.forEach(function(t){
+    document.getElementById('b-'+t).innerHTML='<div style="padding:40px;text-align:center;color:var(--text-3);font-size:13px;">탭을 클릭하면 AI가 생성합니다</div>';
+  });
+  document.getElementById('emptyMsg').style.display='none';
+
+  // 첫 탭(플레이스)만 즉시 생성
+  showTab('checklist');
+  closeSidebar();
+}
+
+function renderTab(tabId, r, name) {
+  var el = document.getElementById('b-'+tabId);
+  if (!el) return;
+  if (tabId==='checklist') {
+    var lines=(r.checklist||'').split('\n').filter(function(l){return l.trim();});
+    var items=lines.map(function(line){var isOk=line.indexOf('✅')===0,isW=line.indexOf('⚠️')===0;var icon=isOk?'✅':isW?'⚠️':'📌';var c=line.replace(/^[✅⚠️📌]\s*/,'');var p=c.split(' — ');return '<div class="check-item"><span class="ck-icon">'+icon+'</span><div><div class="ck-label">'+esc(p[0]||c)+'</div>'+(p[1]?'<div class="ck-desc">'+esc(p[1])+'</div>':'')+'</div></div>';}).join('');
+    el.innerHTML='<div class="action-bar"><span class="action-info"><b>'+esc(name)+'</b></span><button class="copy-all-btn" onclick="copyText('+JSON.stringify(r.checklist||'')+',this)">전체 복사</button></div><div class="card">'+items+'</div>';
+  } else if (tabId==='blog') {
+    el.innerHTML='<div class="action-bar"><span class="action-info">네이버 블로그</span><button class="copy-all-btn" onclick="copyText('+JSON.stringify(r.blog||'')+',this)">전체 복사</button></div>'+makeCard('블로그 초안',r.blog||'');
+  } else if (tabId==='insta') {
+    var itags=(r.insta_tags||[]).map(function(t){return '<span class="tag">'+esc(t.charAt(0)==='#'?t:'#'+t)+'</span>';}).join('');
+    var instaAll=(r.insta_body||'')+'\n\n'+(r.insta_tags||[]).map(function(t){return t.charAt(0)==='#'?t:'#'+t;}).join(' ');
+    el.innerHTML='<div class="action-bar"><span class="action-info">인스타그램</span><button class="copy-all-btn" onclick="copyText('+JSON.stringify(instaAll)+',this)">본문+태그 복사</button></div><div class="card"><div class="card-head"><span class="card-label">본문</span><button class="copy-btn" onclick="copyText('+JSON.stringify(r.insta_body||'')+',this)">복사</button></div><div class="card-body">'+esc(r.insta_body||'')+'</div><div class="tags-wrap">'+itags+'</div></div>';
+  } else if (tabId==='facebook') {
+    el.innerHTML='<div class="action-bar"><span class="action-info">페이스북</span><button class="copy-all-btn" onclick="copyText('+JSON.stringify(r.facebook||'')+',this)">전체 복사</button></div>'+makeCard('페이스북',r.facebook||'');
+  } else if (tabId==='youtube') {
+    var ytTags=(r.youtube_tags||[]).map(function(t){return '<span class="tag" style="background:#fff0f0;color:var(--yt-color);">'+esc(t.charAt(0)==='#'?t:'#'+t)+'</span>';}).join('');
+    var ytAll='【제목】\n'+(r.youtube_title||'')+'\n\n【설명란】\n'+(r.youtube_desc||'')+'\n\n【태그】\n'+(r.youtube_tags||[]).join(' ');
+    el.innerHTML='<div class="badge-note"><span class="platform-badge badge-yt">▶ YouTube</span> 유튜브 스튜디오에 붙여넣으세요.</div><div class="action-bar"><span class="action-info">유튜브</span><button class="copy-all-btn" onclick="copyText('+JSON.stringify(ytAll)+',this)">전체 복사</button></div>'+makeCard('제목 후보 3개',r.youtube_title||'')+'<div class="card"><div class="card-head"><span class="card-label">설명란</span><button class="copy-btn" onclick="copyText('+JSON.stringify(r.youtube_desc||'')+',this)">복사</button></div><div class="card-body">'+esc(r.youtube_desc||'')+'</div><div class="tags-wrap">'+ytTags+'</div></div>';
+  } else if (tabId==='tistory') {
+    var tsTags=(r.tistory_tags||[]).map(function(t){return '<span class="tag" style="background:#fff5ee;color:var(--ts-color);">'+esc(t)+'</span>';}).join('');
+    var tsAll=(r.tistory_title||'')+'\n\n'+(r.tistory_body||'')+'\n\n태그: '+(r.tistory_tags||[]).join(', ');
+    el.innerHTML='<div class="badge-note"><span class="platform-badge badge-ts">T 티스토리</span> 티스토리 글쓰기에 붙여넣으세요.</div><div class="action-bar"><span class="action-info">티스토리</span><button class="copy-all-btn" onclick="copyText('+JSON.stringify(tsAll)+',this)">전체 복사</button></div>'+makeCard('포스팅 제목',r.tistory_title||'')+'<div class="card"><div class="card-head"><span class="card-label">본문</span><button class="copy-btn" onclick="copyText('+JSON.stringify(r.tistory_body||'')+',this)">복사</button></div><div class="card-body">'+esc(r.tistory_body||'')+'</div><div class="tags-wrap">'+tsTags+'</div></div>';
+  } else if (tabId==='report') {
+    var h='<div class="action-bar"><span class="action-info">영업 참고</span></div><div class="card">';
+    if(r.report&&typeof r.report==='object'){Object.keys(r.report).forEach(function(k){h+='<div class="rep-sec"><div class="rep-title">'+esc(k)+'</div><div class="rep-body">'+esc(r.report[k])+'</div></div>';});}
+    el.innerHTML=h+'</div>';
   }
 }
 
