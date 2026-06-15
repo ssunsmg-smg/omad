@@ -303,7 +303,8 @@ async function generateTab(tabId){
     facebook:base+'\n\n{"facebook":"페이스북. 이모지. 300자이내. 공유유도."}',
     youtube:base+'\n\n{"youtube_title":"유튜브 제목후보 3개. 줄바꿈구분.","youtube_desc":"유튜브 설명란. 500자. SEO최적화.","youtube_tags":["태그1","태그2","태그3","태그4","태그5","태그6","태그7","태그8","태그9","태그10"]}',
     tistory:base+'\n\n{"tistory_title":"티스토리 제목. SEO최적화.","tistory_body":"티스토리 포스팅. 2000자. 소제목포함. 방문기형식.","tistory_tags":["태그1","태그2","태그3","태그4","태그5"]}',
-    report:base+'\n\n{"report":{"주요 고객층 분석":"내용","상권 및 경쟁 환경":"내용","추천 주류 품목":"내용","영업 핵심 포인트":"내용","방문 적기":"내용"}}'
+    report:base+'\n\n다음 항목별로 상세하게 상권을 분석하세요. 각 항목은 최소 200자 이상 구체적으로 작성하세요.\n\n{"report":{"주요 고객층 분석":"연령대/직업군/소득수준/방문목적/체류시간/재방문율 등 구체적 분석. 핵심 타겟과 세컨더리 타겟을 구분하여 각각의 특성과 니즈를 상세히 기술","상권 및 경쟁 환경":"반경 500m~1km 내 상권 특성, 유동인구 패턴(평일/주말/시간대별), 주변 경쟁업체 현황, 이 업체만의 차별화 포인트, 상권의 성장성 및 리스크 분석","추천 주류 품목":"업종과 고객층에 맞는 주류 카테고리별 추천(소주/맥주/막걸리/와인/위스키/사케 등), 각 주류별 추천 이유와 예상 회전율, 계절별 판매 전략, 수익성 높은 품목 우선순위","영업 핵심 포인트":"거래처 담당자가 반드시 체크해야 할 사항, 주문 패턴 예측, 관계 유지 전략, 추가 매출 발굴 방안, 경쟁사 대비 우리 회사 강점 어필 포인트, 결제 조건 및 납품 시 주의사항","방문 적기":"최적 영업 방문 요일/시간대, 매출이 높아지는 시즌/이벤트 시기, 재고 보충 타이밍 예측, 신규 주류 제안 최적 시점, 월별 영업 캘린더 제안","종합 영업 전략":"위 분석을 종합한 이 거래처만을 위한 맞춤 영업 전략. 단기(1개월)/중기(3개월)/장기(6개월) 목표와 실행 방안"}}'
+
   };
   try{
     var r=await callClaude(prompts[tabId]);
@@ -396,9 +397,17 @@ function renderTab(tabId,r,name){
     var tsAll=(r.tistory_title||'')+'\n\n'+(r.tistory_body||'')+'\n\n태그: '+(r.tistory_tags||[]).join(', ');
     el.innerHTML='<div class="badge-note"><span class="platform-badge badge-ts">T 티스토리</span> 티스토리 글쓰기에 붙여넣으세요.</div><div class="action-bar"><span class="action-info">티스토리</span><button class="copy-all-btn" onclick="copyText('+JSON.stringify(tsAll)+',this)">전체 복사</button></div>'+makeCard('포스팅 제목',r.tistory_title||'')+'<div class="card"><div class="card-head"><span class="card-label">본문</span><button class="copy-btn" onclick="copyText('+JSON.stringify(r.tistory_body||'')+',this)">복사</button></div><div class="card-body">'+esc(r.tistory_body||'')+'</div><div class="tags-wrap">'+tsTags+'</div></div>';
   }else if(tabId==='report'){
-    var h='<div class="action-bar"><span class="action-info">영업 참고</span></div><div class="card">';
-    if(r.report&&typeof r.report==='object'){Object.keys(r.report).forEach(function(k){h+='<div class="rep-sec"><div class="rep-title">'+esc(k)+'</div><div class="rep-body">'+esc(r.report[k])+'</div></div>';});}
-    el.innerHTML=h+'</div>';
+    var repAll='';
+    var h='<div class="action-bar"><span class="action-info">영업 방문 전 필독</span><button class="copy-all-btn" id="repCopyBtn">전체 복사</button></div>';
+    if(r.report&&typeof r.report==='object'){
+      Object.keys(r.report).forEach(function(k){
+        repAll+=k+'\n'+r.report[k]+'\n\n';
+        h+='<div class="card" style="margin-bottom:10px"><div class="card-head" style="background:#1a1a2e"><span class="card-label" style="color:rgba(255,255,255,0.7)">'+esc(k)+'</span><button class="copy-btn" style="border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.6)" onclick="copyText('+JSON.stringify(r.report[k]||'')+',this)">복사</button></div><div class="rep-body" style="padding:16px;font-size:13px;line-height:1.85;white-space:pre-wrap">'+esc(r.report[k])+'</div></div>';
+      });
+    }
+    el.innerHTML=h;
+    var copyBtn=document.getElementById('repCopyBtn');
+    if(copyBtn){var ra=repAll;copyBtn.onclick=function(){copyText(ra,copyBtn);};}
   }
 }
 </script>
